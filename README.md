@@ -9,7 +9,7 @@
 ## 🚀 Quick Start (One Command!)
 
 ```bash
-bash <(curl -fsSL https://raw.githubusercontent.com/AdilWasnik/Gensyn-Ai-Node-Advanced-Installation-Guide/refs/heads/main/menu.sh)
+bash <(curl -fsSL https://raw.githubusercontent.com/AdilWasnik/Gensyn-Ai-Node-Advanced-Installation-Guide/main/menu.sh)
 ```
 
 | Option | Action |
