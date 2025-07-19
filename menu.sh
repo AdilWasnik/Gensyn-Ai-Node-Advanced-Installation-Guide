@@ -445,7 +445,7 @@ reset_peer() {
 main_menu() {
     while true; do
         show_header
-        echo -e "${BOLD}${MAGENTA}==================== 🧠 GENSYN MAIN MENU ====================${NC}"
+        echo -e "${BOLD}${CYAN}==================== 🧠 GENSYN MAIN MENU ====================${NC}"
         echo "1. 🛠  Install/Reinstall Node"
         echo "2. 🚀 Run Node"
         echo "3. ⚙️  Update Node"
