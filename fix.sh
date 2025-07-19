@@ -10,7 +10,7 @@ echo ""
 echo "📥 Downloading latest page.tsx from AdilWasnik GitHub..."
 
 PAGE_DEST="$HOME/rl-swarm/modal-login/app/page.tsx"
-curl -fsSL https://raw.githubusercontent.com/AdilWasnik/Gensyn-Ai-Node-Advanced-Installation-Guide/main/page.tsx -o "$PAGE_DEST"
+curl -fsSL https://raw.githubusercontent.com/AdilWasnik/Gensyn-Ai-Node-Advanced-Installation-Guide/main/fix.sh -o "$PAGE_DEST"
 
 if [ $? -eq 0 ]; then
   echo "✅ Successfully updated: page.tsx"
