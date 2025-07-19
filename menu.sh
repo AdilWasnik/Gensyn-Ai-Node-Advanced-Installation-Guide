@@ -54,7 +54,7 @@ init() {
 # Display Header
 show_header() {
     clear
-    echo -e "${BLUE}${BOLD}"
+    echo -e "${RED}${BOLD}"
     echo "┌─────────────────────────────┐"
     echo "│  ░█████╗░██████╗░██╗██╗░░░░░ │"
     echo "│  ██╔══██╗██╔══██╗██║██║░░░░░ │"
