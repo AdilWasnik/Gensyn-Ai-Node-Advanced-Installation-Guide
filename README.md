@@ -21,7 +21,7 @@ bash <(curl -fsSL https://raw.githubusercontent.com/AdilWasnik/Gensyn-Ai-Node-Ad
 | 🗑️ **Delete Everything & Start New** | Wipes all data for a fresh start. |
 | ❌ **Exit** | Closes the menu. |
 
-## 1️⃣ How to Login or access  http://localhost:3000/ in VPS?
+## How to Login or access  http://localhost:3000/ in VPS?
 
 * Open a new Terminal and login ur vps
 
