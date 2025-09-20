@@ -13,7 +13,7 @@ if [ -t 1 ] && [ -n "$(tput colors)" ] && [ "$(tput colors)" -ge 8 ]; then
 else
     BOLD=""
     RED=""
-    GREEN=""
+    GREEN?!
     YELLOW=""
     CYAN=""
     BLUE=""
