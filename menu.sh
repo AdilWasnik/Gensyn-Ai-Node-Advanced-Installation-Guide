@@ -100,7 +100,6 @@ install_deps() {
     echo "✅ All dependencies installed successfully!"
 }
 
-
 # Swap Management
 manage_swap() {
     if [ ! -f "$SWAP_FILE" ]; then
@@ -149,7 +148,6 @@ modify_run_script() {
         # 3. Patch rm logic only if not already patched
         if grep -q 'rm -r \$ROOT_DIR/modal-login/temp-data/\*\.json' "$run_script" && \
            ! grep -q 'if \[ "\$KEEP_TEMP_DATA" != "true" \]; then' "$run_script"; then
-
             perl -i -pe '
                 s#rm -r \$ROOT_DIR/modal-login/temp-data/\*\.json 2> /dev/null \|\| true#
 if [ "\$KEEP_TEMP_DATA" != "true" ]; then
@@ -157,6 +155,10 @@ if [ "\$KEEP_TEMP_DATA" != "true" ]; then
 fi#' "$run_script"
         fi
     fi
+}
+
+has_error() {
+    grep -qP '(current.?batch|UnboundLocalError|Daemon failed to start|FileNotFoundError|DHTNode bootstrap failed|Failed to connect to Gensyn Testnet|Killed|argument of type '\''NoneType'\'' is not iterable|Encountered error during training|cannot unpack non-iterable NoneType object|ConnectionRefusedError|Exception occurred during game run|get_logger\(\)\.exception)' "$LOG_FILE"
 }
 
 fix_kill_command() {
@@ -181,11 +183,20 @@ clone_repo() {
     cd "$SWARM_DIR"
 }
 
+clone_downgraded_repo() {
+    sudo rm -rf "$SWARM_DIR" 2>/dev/null
+    git clone "$REPO_URL" "$SWARM_DIR" >/dev/null 2>&1
+    cd "$SWARM_DIR"
+    git checkout 305d3f3227d9ca27f6b4127a5379fc6a40143525 >/dev/null 2>&1
+}
+
 create_default_config() {
     log "INFO" "Creating default config at $CONFIG_FILE"
     mkdir -p "$SWARM_DIR"
     cat <<EOF > "$CONFIG_FILE"
 PUSH=N
+MODEL_NAME=
+PARTICIPATE_AI_MARKET=Y
 EOF
     chmod 600 "$CONFIG_FILE"
     log "INFO" "Default config created"
@@ -213,10 +224,88 @@ auto_enter_inputs() {
         echo -e "${GREEN}>>> No answer was given, so NO models will be pushed to Hugging Face Hub${NC}"
     fi
 
-    # Simulate Enter for MODEL_NAME
-    MODEL_NAME=""
-    echo -e "${GREEN}>> Enter the name of the model you want to use in huggingface repo/name format, or press [Enter] to use the default model.${NC}"
-    echo -e "${GREEN}>> Using default model from config${NC}"
+    # Handle AI Prediction Market participation
+    if [ -n "$PARTICIPATE_AI_MARKET" ]; then
+        echo -e "${GREEN}>> Would you like your model to participate in the AI Prediction Market? [Y/n] $PARTICIPATE_AI_MARKET${NC}"
+    else
+        PARTICIPATE_AI_MARKET="Y"
+        echo -e "${GREEN}>> Would you like your model to participate in the AI Prediction Market? [Y/n] Y${NC}"
+    fi
+}
+
+# Change Configuration
+change_config() {
+    show_header
+    echo -e "${CYAN}${BOLD}⚙️ CHANGE CONFIGURATION${NC}"
+    echo -e "${YELLOW}===============================================================================${NC}"
+
+    if [ -f "$CONFIG_FILE" ]; then
+        source "$CONFIG_FILE"
+        echo -e "\n${BOLD}${CYAN}⚙️  CURRENT CONFIGURATION${NC}"
+        echo -e "${YELLOW}-------------------------------------------------${NC}"
+        echo -e "🚀 Push to HF              : ${GREEN}$PUSH${NC}"
+        echo -e "🧠 Model Name              : ${GREEN}${MODEL_NAME:-None}${NC}"
+        echo -e "📈 Participate AI Market   : ${GREEN}$PARTICIPATE_AI_MARKET${NC}"
+        echo -e "${YELLOW}-------------------------------------------------${NC}"
+    else
+        echo -e "${RED}❗ No config found. Creating default...${NC}"
+        create_default_config
+        source "$CONFIG_FILE"
+    fi
+
+    echo -e "\n${CYAN}${BOLD}🧠 Model Selection:${NC}"
+    echo -e "${YELLOW}-------------------------------------------------${NC}"
+    printf "${BOLD}%-3s %-40s${NC}\n" "0." "None (default, assigned by hardware)"
+    printf "${BOLD}%-3s %-40s${NC}\n" "1." "Gensyn/Qwen2.5-0.5B-Instruct"
+    printf "${BOLD}%-3s %-40s${NC}\n" "2." "Qwen/Qwen3-0.6B"
+    printf "${BOLD}%-3s %-40s${NC}\n" "3." "nvidia/AceInstruct-1.5B"
+    printf "${BOLD}%-3s %-40s${NC}\n" "4." "dnotitia/Smoothie-Qwen3-1.7B"
+    printf "${BOLD}%-3s %-40s${NC}\n" "5." "Gensyn/Qwen2.5-1.5B-Instruct"
+    printf "${BOLD}%-3s %-40s${NC}\n" "6." "Custom model"
+    echo -e "${YELLOW}-------------------------------------------------${NC}"
+    read -p "$(echo -e "${BOLD}Choose model [0-6] (Enter = keep current: ${MODEL_NAME:-None}): ${NC}")" model_choice
+
+    if [ -n "$model_choice" ]; then
+        case $model_choice in
+            0) MODEL_NAME="" ;;
+            1) MODEL_NAME="Gensyn/Qwen2.5-0.5B-Instruct" ;;
+            2) MODEL_NAME="Qwen/Qwen3-0.6B" ;;
+            3) MODEL_NAME="nvidia/AceInstruct-1.5B" ;;
+            4) MODEL_NAME="dnotitia/Smoothie-Qwen3-1.7B" ;;
+            5) MODEL_NAME="Gensyn/Qwen2.5-1.5B-Instruct" ;;
+            6) read -p "Enter custom model (repo/name): " MODEL_NAME ;;
+            *) echo -e "${RED}❌ Invalid choice. Keeping current config.${NC}"; MODEL_NAME="${MODEL_NAME:-}" ;;
+        esac
+        sed -i "s|^MODEL_NAME=.*|MODEL_NAME=$MODEL_NAME|" "$CONFIG_FILE"
+        echo -e "${GREEN}✅ Model updated to: ${MODEL_NAME:-None}${NC}"
+    else
+        echo -e "${CYAN}ℹ️ Model selection unchanged.${NC}"
+    fi
+
+    echo -e "\n${CYAN}${BOLD}🚀 Push to Hugging Face:${NC}"
+    read -p "${BOLD}Push models to Hugging Face Hub? [y/N]: ${NC}" push_choice
+    if [ -n "$push_choice" ]; then
+        PUSH=$([[ "$push_choice" =~ ^[Yy]$ ]] && echo "Y" || echo "N")
+        sed -i "s/^PUSH=.*/PUSH=$PUSH/" "$CONFIG_FILE"
+        echo -e "${GREEN}✅ Push to HF updated to: $PUSH${NC}"
+    else
+        echo -e "${CYAN}ℹ️ Push setting unchanged.${NC}"
+    fi
+
+    echo -e "\n${CYAN}${BOLD}📈 Participate in AI Prediction Market:${NC}"
+    read -p "${BOLD}Participate in AI Prediction Market? [Y/n]: ${NC}" market_choice
+    if [ -n "$market_choice" ]; then
+        PARTICIPATE_AI_MARKET=$([[ "$market_choice" =~ ^[Yy]$ ]] && echo "Y" || echo "N")
+        sed -i "s|^PARTICIPATE_AI_MARKET=.*|PARTICIPATE_AI_MARKET=$PARTICIPATE_AI_MARKET|" "$CONFIG_FILE"
+        echo -e "${GREEN}✅ AI Prediction Market participation updated to: $PARTICIPATE_AI_MARKET${NC}"
+    else
+        echo -e "${CYAN}ℹ️ AI Prediction Market setting unchanged.${NC}"
+    fi
+
+    echo -e "\n${GREEN}✅ Configuration updated!${NC}"
+    echo -e "${YELLOW}${BOLD}👉 Press Enter to return to the menu...${NC}"
+    read
+    sleep 1
 }
 
 # Install Node
@@ -293,6 +382,79 @@ install_node() {
     sleep 1
 }
 
+install_downgraded_node() {
+    set +m  
+
+    show_header
+    echo -e "${CYAN}${BOLD}INSTALLATION${NC}"
+    echo -e "${YELLOW}===============================================================================${NC}"
+    
+    echo -e "\n${CYAN}Auto-login configuration:${NC}"
+    echo "Preserve login data between sessions? (recommended for auto-login)"
+    read -p "${BOLD}Enable auto-login? [Y/n]: ${NC}" auto_login
+
+    KEEP_TEMP_DATA=$([[ "$auto_login" =~ ^[Nn]$ ]] && echo "false" || echo "true")
+    export KEEP_TEMP_DATA
+
+    # Handle swarm.pem from SWARM_DIR
+    if [ -f "$SWARM_DIR/swarm.pem" ]; then
+        echo -e "\n${YELLOW}⚠️ Existing swarm.pem detected in SWARM_DIR!${NC}"
+        echo "1. Keep and use existing Swarm.pem"
+        echo "2. Delete and generate new Swarm.pem"
+        echo "3. Cancel installation"
+        read -p "${BOLD}➡️ Choose action [1-3]: ${NC}" pem_choice
+
+        case $pem_choice in
+            1)
+                sudo cp "$SWARM_DIR/swarm.pem" "$HOME/swarm.pem"
+                log "INFO" "PEM copied from SWARM_DIR to HOME"
+                ;;
+            2)
+                sudo rm -rf "$HOME/swarm.pem"
+                log "INFO" "Old PEM deleted from SWARM_DIR"
+                ;;
+            3)
+                echo -e "${RED}❌ Installation cancelled by user.${NC}"
+                sleep 1
+                return
+                ;;
+            *)
+                echo -e "${RED}❌ Invalid choice. Continuing with existing PEM.${NC}"
+                ;;
+        esac
+    fi
+
+    echo -e "\n${YELLOW}Starting installation...${NC}"
+
+    spinner() {
+        local pid=$1
+        local msg="$2"
+        local spinstr="⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏"
+        while kill -0 "$pid" 2>/dev/null; do
+            for (( i=0; i<${#spinstr}; i++ )); do
+                printf "\r$msg ${spinstr:$i:1} "
+                sleep 0.15
+            done
+        done
+        printf "\r$msg ✅ Done"; tput el; echo
+    }
+
+    ( install_deps ) & spinner $! "📦 Installing dependencies"
+    ( clone_downgraded_repo ) & spinner $! "📥 Cloning repo"
+    ( modify_run_script ) & spinner $! "🧠 Modifying run script"
+
+    if [ -f "$HOME/swarm.pem" ]; then
+        sudo cp "$HOME/swarm.pem" "$SWARM_DIR/swarm.pem"
+        sudo chmod 600 "$SWARM_DIR/swarm.pem"
+    fi
+
+    echo -e "\n${GREEN}✅ Installation completed!${NC}"
+    echo -e "Auto-login: ${GREEN}$([ "$KEEP_TEMP_DATA" == "true" ] && echo "ENABLED" || echo "DISABLED")${NC}"
+    echo -e "${YELLOW}${BOLD}👉 Press Enter to return to the menu...${NC}"
+    read
+    sleep 1
+}
+
 # Run Node
 run_node() {
     show_header
@@ -317,7 +479,9 @@ run_node() {
         source "$CONFIG_FILE"
         echo -e "\n${BOLD}${CYAN}⚙️  CURRENT CONFIGURATION${NC}"
         echo -e "${YELLOW}-------------------------------------------------${NC}"
-        echo -e "🚀 Push to HF     : ${GREEN}$PUSH${NC}"
+        echo -e "🚀 Push to HF              : ${GREEN}$PUSH${NC}"
+        echo -e "🧠 Model Name              : ${GREEN}${MODEL_NAME:-None}${NC}"
+        echo -e "📈 Participate AI Market   : ${GREEN}$PARTICIPATE_AI_MARKET${NC}"
         echo -e "${YELLOW}-------------------------------------------------${NC}"
     else
         echo -e "${RED}❗ No config found. Creating default...${NC}"
@@ -325,6 +489,38 @@ run_node() {
         source "$CONFIG_FILE"
     fi
     
+    echo -e "${CYAN}${BOLD}🧠 Model Selection:${NC}"
+    echo -e "${YELLOW}-------------------------------------------------${NC}"
+    printf "${BOLD}%-3s %-40s${NC}\n" "0." "None (default, assigned by hardware)"
+    printf "${BOLD}%-3s %-40s${NC}\n" "1." "Gensyn/Qwen2.5-0.5B-Instruct"
+    printf "${BOLD}%-3s %-40s${NC}\n" "2." "Qwen/Qwen3-0.6B"
+    printf "${BOLD}%-3s %-40s${NC}\n" "3." "nvidia/AceInstruct-1.5B"
+    printf "${BOLD}%-3s %-40s${NC}\n" "4." "dnotitia/Smoothie-Qwen3-1.7B"
+    printf "${BOLD}%-3s %-40s${NC}\n" "5." "Gensyn/Qwen2.5-1.5B-Instruct"
+    printf "${BOLD}%-3s %-40s${NC}\n" "6." "Custom model"
+    echo -e "${YELLOW}-------------------------------------------------${NC}"
+    read -p "$(echo -e "${BOLD}Choose model [0-6] (Enter = keep current: ${MODEL_NAME:-None}): ${NC}")" model_choice
+
+    if [ -n "$model_choice" ]; then
+        case $model_choice in
+            0) MODEL_NAME="" ;;
+            1) MODEL_NAME="Gensyn/Qwen2.5-0.5B-Instruct" ;;
+            2) MODEL_NAME="Qwen/Qwen3-0.6B" ;;
+            3) MODEL_NAME="nvidia/AceInstruct-1.5B" ;;
+            4) MODEL_NAME="dnotitia/Smoothie-Qwen3-1.7B" ;;
+            5) MODEL_NAME="Gensyn/Qwen2.5-1.5B-Instruct" ;;
+            6) read -p "Enter custom model (repo/name): " MODEL_NAME ;;
+            *) echo -e "${RED}❌ Invalid choice. Using current config.${NC}"; MODEL_NAME="${MODEL_NAME:-}" ;;
+        esac
+        sed -i "s|^MODEL_NAME=.*|MODEL_NAME=$MODEL_NAME|" "$CONFIG_FILE"
+    fi
+
+    if [ -n "$MODEL_NAME" ]; then
+        echo -e "${GREEN}>> Using selected model: $MODEL_NAME${NC}"
+    else
+        echo -e "${GREEN}>> Using default model assignment.${NC}"
+    fi
+
     auto_enter_inputs
 
     # Ensure KEEP_TEMP_DATA is set
@@ -342,13 +538,23 @@ run_node() {
             manage_swap
             python3 -m venv .venv
             source .venv/bin/activate
+            install_python_packages
+            : "${PARTICIPATE_AI_MARKET:=Y}"
             while true; do
-                KEEP_TEMP_DATA="$KEEP_TEMP_DATA" ./run_rl_swarm.sh <<EOF
+                LOG_FILE="$SWARM_DIR/node.log"
+                : > "$LOG_FILE"
+                KEEP_TEMP_DATA="$KEEP_TEMP_DATA" ./run_rl_swarm.sh <<EOF | tee "$LOG_FILE"
 $PUSH
 $MODEL_NAME
+$PARTICIPATE_AI_MARKET
 EOF
-                log "WARN" "Node crashed, restarting in 5 seconds..."
-                echo -e "${YELLOW}⚠️ Node crashed. Restarting in 5 seconds...${NC}"
+                if has_error; then
+                    log "ERROR" "❌ Critical error detected, restarting in 5 seconds..."
+                    echo -e "${RED}❌ Critical error detected. Restarting in 5 seconds...${NC}"
+                else
+                    log "WARN" "⚠️ Node exited without critical error, restarting in 5 seconds..."
+                    echo -e "${YELLOW}⚠️ Node exited (non-critical). Restarting in 5 seconds...${NC}"
+                fi
                 sleep 5
             done
             ;;
@@ -359,9 +565,14 @@ EOF
             manage_swap
             python3 -m venv .venv
             source .venv/bin/activate
-            KEEP_TEMP_DATA="$KEEP_TEMP_DATA" ./run_rl_swarm.sh <<EOF
+            install_python_packages
+            : "${PARTICIPATE_AI_MARKET:=Y}"
+            LOG_FILE="$SWARM_DIR/node.log"
+            : > "$LOG_FILE"
+            KEEP_TEMP_DATA="$KEEP_TEMP_DATA" ./run_rl_swarm.sh <<EOF | tee "$LOG_FILE"
 $PUSH
 $MODEL_NAME
+$PARTICIPATE_AI_MARKET
 EOF
             ;;
         3)
@@ -441,17 +652,29 @@ reset_peer() {
     sleep 5
 }
 
+install_python_packages() {
+    TRANSFORMERS_VERSION=$(pip show transformers 2>/dev/null | grep ^Version: | awk '{print $2}')
+    TRL_VERSION=$(pip show trl 2>/dev/null | grep ^Version: | awk '{print $2}')
+
+    if [ "$TRANSFORMERS_VERSION" != "4.51.3" ] || [ "$TRL_VERSION" != "0.19.1" ]; then
+        pip install --force-reinstall transformers==4.51.3 trl==0.19.1
+    fi
+    pip freeze | grep -E '^(transformers|trl)=='
+}
+
 # Main Menu
 main_menu() {
     while true; do
         show_header
-        echo -e "${BOLD}${CYAN}==================== 🧠 GENSYN MAIN MENU ====================${NC}"
+        echo -e "${BOLD}${MAGENTA}==================== 🧠 GENSYN MAIN MENU ====================${NC}"
         echo "1. 🛠  Install/Reinstall Node"
-        echo "2. 🚀 Run Node"
+        echo "2. 🚀  Run Node"
         echo "3. ⚙️  Update Node"
-        echo "4. ♻️  Reset Peer ID"
-        echo "5. 🗑️  Delete Everything & Start New"
-        echo "6. ❌ Exit"
+        echo '4. 🔥  Change Configuration'
+        echo "5. ♻️  Reset Peer ID"
+        echo "6. 🗑️  Delete Everything & Start New"
+        echo "7. 📉  Downgrade Version"
+        echo "8. ❌ Exit"
         echo -e "${GREEN}===============================================================================${NC}"
         
         read -p "${BOLD}${YELLOW}➡️ Select option [1-7]: ${NC}" choice
@@ -460,8 +683,9 @@ main_menu() {
             1) install_node ;;
             2) run_node ;;
             3) update_node ;;
-            4) reset_peer ;;
-            5)
+            4) change_config ;;
+            5) reset_peer ;;
+            6)
                 echo -e "\n${RED}${BOLD}⚠️ WARNING: This will delete ALL node data!${NC}"
                 read -p "${BOLD}Are you sure you want to continue? [y/N]: ${NC}" confirm
                 if [[ "$confirm" =~ ^[Yy]$ ]]; then
@@ -480,8 +704,9 @@ main_menu() {
                     echo -e "${YELLOW}⚠️ Operation canceled${NC}"
                 fi
                 ;;
-            6)
-                echo -e "\n${GREEN}✅ Exiting... Thank you for using!${NC}"
+            7) install_downgraded_node ;;
+            8)
+                echo -e "\n${GREEN}✅ Exiting... Thank you for using Hustle Manager!${NC}"
                 exit 0
                 ;;
             *)
